@@ -1,0 +1,555 @@
+<!--
+Anthony Cieri
+-->
+
+<!DOCTYPE html>
+    <head>
+        <meta charset="utf-8" />
+        <meta content="utf-8" http-equiv="enconding" />
+        <title>Flappy Bird | by Anthony Cieri</title>
+    </head>
+    <body style="margin:0; padding:0; background-color: #e2f0d2;">
+        <!--<h3>flappyBird by Anthony Cieri</h3>-->
+        <canvas id="canvas" width="1310px" height="850px"style="
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            display: inline-block;
+            text-align: center;
+            padding: 5px;
+            "></canvas>
+        <canvas id="scoreboard" width="450px" height="850px"style="
+            display: block;
+            float: left;
+            padding: 5px;
+            "></canvas>
+        <script src="gameLib.js"></script>
+        <aside style="
+        display: block;
+        float: right;
+        font-family: monospace;
+        padding: 5px;
+        white-space: pre;
+        line-height: 0;
+        ">
+            <p>p or esc to pause</p>
+            <p>r to restart</p>
+            <p>w        yellow</p>
+            <p>enter    green</p>
+            <p>\        magenta</p>
+            <p>shift    orange</p>
+            <p>ctrl     red</p>
+            <p>R arrow  purple</p>
+            <p>space    blue</p>
+            <p>bksp     black</p>
+            <p>~        white</p>
+            <p>capsLk   Cyan</p>
+            <p>L arrow  Lime</p>
+            <p>v        Pink</p>
+        </aside>
+        <canvas id="playerList" width="1900px" height="200px"style="
+            display: inline-block;
+            text-align: center;
+            padding: 5px;
+            "></canvas>
+    </body>
+</html>
+
+<script type="application/javascript">
+
+// Var section
+let plCvs = document.getElementById("playerList");
+let plCtx = plCvs.getContext("2d");
+
+let sbCvs = document.getElementById("scoreboard");
+let sbCtx = sbCvs.getContext("2d");
+
+let cvs = document.getElementById("canvas");
+let ctx = cvs.getContext("2d");
+
+let gap = 100;
+
+let initJump = -4.0;
+
+let initGravity = 0.25;
+let acc = -0.004;
+
+let numPlayers = 12;
+
+let sizeImageFile = "images/playerYellow.png";
+let sizeImage = new Image();
+sizeImage.src = sizeImageFile;
+
+// A map is not the way to do this, I need to use indicies
+let keyList =
+[
+    87,     //w
+    13,     //enter
+    220,    // \
+    16,     //shift
+    17,     //ctrl
+    39,     //->
+    32,     //space
+    8,      //bksp
+    192,    //~
+    20,     //capsLk
+    37,     //<-
+    86      //v
+]
+
+let colorList =
+[
+    "Yellow",
+    "Green",
+    "Magenta",
+    "Orange",
+    "Red",
+    "Purple",
+    "Blue",
+    "Black",
+    "White",
+    "Cyan",
+    "Lime",
+    "Pink"
+]
+
+/*
+ * w        yellow
+ * enter    green
+ * \        magenta
+ * shift    orange
+ * ctrl     red
+ * ->       purple
+ * space    blue
+ * bksp     black
+ * ~        white
+ * capsLk   Cyan
+ * <-       Lime
+ * v        Pink
+ */
+
+let playersX = 10;
+
+let pCenterX = sizeImage.width / 2;
+let pCenterY = sizeImage.height / 2;
+// End Variable Section
+
+
+// Image Section
+let sky = new Image();
+sky.src = "images/sky.png";
+
+let city = new Image();
+city.src = "images/city.png";
+
+let bushes = new Image();
+bushes.src = "images/bushes.png";
+
+let northObstacle = new Image();
+northObstacle.src = "images/northObstacle.png";
+
+let southObstacle = new Image();
+southObstacle.src = "images/southObstacle.png";
+
+let foreground = new Image();
+foreground.src = "images/foreground.png";
+// End Image Section
+
+
+// Audio Section
+let fly = new Audio();
+fly.src = "sounds/fly.mp3";
+
+let scoreSound = new Audio();
+scoreSound.src = "sounds/score.mp3";
+
+let shatterSound = new Audio();
+shatterSound.src = "sounds/shatter.mp3";
+// End Audio Section
+
+
+// Event Listener Section
+let reactionFactor = acc * 0.001;
+document.addEventListener("keyup", function(e)
+{
+    //not p and not esc and not paused
+    if(e.keyCode !== 80 && e.keyCode !== 27 && !paused)
+    {
+        //console.log(e.keyCode);
+        for (let i = 0; i < numPlayers; i++)
+        {
+            if (players[i].flapKey == e.keyCode)
+            {
+                players[i].yVel = initJump + (frame * reactionFactor);
+                fly.play();
+                i = numPlayers;
+            }
+        }
+    }
+});
+
+let paused = true;
+document.addEventListener('keydown', function(e)
+{
+    //p or esc
+    if(e.keyCode === 80 || e.keyCode === 27)
+    {
+        paused = !paused;
+        Update();
+    }
+});
+
+document.addEventListener('keydown', function(e)
+{
+    //r
+    if(e.keyCode === 82)
+    {
+        restart();
+    }
+});
+// End Event Listener Section
+
+
+// Function Section
+let weight = 1;
+let buffer = 30;
+let obsUpperBound = cvs.height - (foreground.height + northObstacle.height + gap + buffer);
+let obsLowerBound = buffer - northObstacle.height;
+let lastHeight = 0;
+
+function newHeight(last)
+{
+    //Weigh the gaps' movement up or down, adds movement to the game
+    if(Math.random() > 0.6)
+    {
+        weight *= -1;
+    }
+
+    let next = last + (200 * Math.random() * weight); //last + (250 * ((Math.random() - 0.5) + (0.2 * weight)));
+
+    if (next >= obsUpperBound)
+    {
+        weight *= -1;
+        return obsUpperBound;
+    }
+    
+    if (next <= obsLowerBound)
+    {
+        weight *= -1;
+        return obsLowerBound;
+    }
+
+    return next;
+}
+
+
+let highScore = 0;
+
+let distance = 0;
+let frame = 0;
+let highScoreColor = "Nobody";
+
+let highscores = [];
+let highscoreColors = [];
+
+function setHighscore(color)
+{
+    let dispDist = (-Math.round(distance) / 100);
+    if (dispDist > highScore && dispDist > 10.0)
+    {
+        highScore = dispDist;
+
+        highScoreColor = color;
+        highscoreColors.push(color);
+
+        //console.log(highScoreColor + " got a new highscore of " + highScore + "!!!");
+        highscores.push(highScoreColor + " got a new highscore of " + highScore);
+    }
+}
+
+function updateScore()
+{
+    sbCtx.fillStyle = "#dbda96";
+    sbCtx.fillRect(0, 0, sbCvs.width, sbCvs.height);
+
+    sbCtx.fillStyle = "#000";
+    sbCtx.font = "20px monospace";
+    sbCtx.fillText("Score: " + (-Math.round(distance) / 100), 10, 25);
+    sbCtx.fillText("High Score: " + highScore + " by: " + highScoreColor, 10, 50);
+
+    sbCtx.font = "bold 20px monospace";
+    for (let i = 0; i < highscores.length; i++)
+    {
+        sbCtx.fillStyle = highscoreColors[i];
+        sbCtx.fillText(highscores[i], 10, 75 + (25 * i));
+        sbCtx.strokeStyle = "white";
+        sbCtx.strokeText(highscores[i], 10, 75 + (25 * i));
+    }
+}
+
+
+// length of the space from obs spawn to the player
+let obstacleSpaceWidth = cvs.width - playersX;
+let numObstacles = 6;
+
+let obstacles = [];
+let players = [];
+
+let xVel = 0.0;
+let playerYVel = 0.0;
+let initSpacing = (cvs.width + 100) / numObstacles;
+
+function restart()
+{
+    paused = true;
+    distance = 0;
+    frame = 0;
+
+    lastHeight = ((obsLowerBound - obsUpperBound) - gap) / 2;
+    obstacles = [];
+    players = [];
+
+    xVel = -2.0;
+
+    // Create obstacles
+    for (let i = 0; i < numObstacles; i++)
+    {
+        let x = cvs.width + (i * initSpacing);
+        obstacles.push(new Obstacle(x, acc, xVel, frame, x - playersX));
+    }
+
+    // Create players
+    for (let i = 0; i < numPlayers; i++)
+    {
+        let newKey = keyList[i];
+        let newImage = colorList[i];
+
+        spreadY = (Math.random() - 0.5) * 100;
+
+        players.push(new Player(newKey, newImage, 150 + spreadY));
+    }
+}
+restart();
+
+
+let halfCity = city.width / 2;
+let halfBush = bushes.width / 2;
+let bushYPos = cvs.height - bushes.height;
+let cityYPos = cvs.height - (city.height * 2.5);
+
+function scrollBackground()
+{
+    //scrolls the background with parellax
+
+    //sky
+    ctx.fillStyle = '#70c5ce';
+    ctx.fillRect(0, 0, cvs.width, cvs.height);
+
+    //city
+    // There's a problem with the image file that causes visual gliches but I'm too lazy to fix it
+    let farAbsPos = (0.3 * distance) % halfCity;
+    ctx.drawImage(city, farAbsPos, cityYPos);
+
+    //bushes
+    let midAbsPos = (0.5 * distance) % halfBush;
+    ctx.drawImage(bushes, midAbsPos,  bushYPos);
+}
+
+
+let halfFore = foreground.width / 2;
+let fgYPos = cvs.height - foreground.height;
+
+function scrollForeground()
+{
+    //scrolls the foreground with parellax
+
+    //city, etc.
+    let closeAbsPos = (1.5 * distance) % halfFore;
+    ctx.drawImage(foreground, closeAbsPos, fgYPos);
+}
+
+// max rotation per frame, smooths out flapping, but too smooth feels sluggish. 1/6 circle / frame
+let maxRotDelta = 6 / (Math.PI * 2);
+let numStacks = 4;
+
+let horiSpacing = plCvs.width / (numStacks);
+let vertSpacing = plCvs.height / Math.ceil(numPlayers / (numStacks));
+
+function updatePlayers(i)
+{
+    plCtx.font = "bold 30px monospace";
+    plCtx.fillStyle = players[i].color;
+
+    if(!players[i].alive)
+    {
+        // Display final score
+        plCtx.fillText(players[i].finalScore, horiSpacing * (i % numStacks) + 30, vertSpacing * Math.floor(i / numStacks) + 45);
+        plCtx.strokeStyle = "white";
+        plCtx.strokeText(players[i].finalScore, horiSpacing * (i % numStacks) + 30, vertSpacing * Math.floor(i / numStacks) + 45);
+        return;
+    }
+
+    plCtx.fillText(players[i].color, horiSpacing * (i % numStacks) + 30, vertSpacing * Math.floor(i / numStacks) + 45);
+    plCtx.strokeStyle = "white";
+    plCtx.strokeText(players[i].color, horiSpacing * (i % numStacks) + 30, vertSpacing * Math.floor(i / numStacks) + 45);
+
+    // Gravity increases as the game does for quicker reactions
+    players[i].yVel += initGravity + (frame * reactionFactor);
+    players[i].y += players[i].yVel;
+
+    // Check for impact with ground
+    if (players[i].y >= cvs.height - foreground.height)
+    {
+        players[i].alive = false;
+        players[i].finalScore = (-Math.round(distance) / 100);
+        setHighscore(colorList[i]);
+    }
+
+    let xOffset = playersX + pCenterX;
+    let yOffset = players[i].y + pCenterY;
+
+    // Find rotation towards velocity
+    let newRot = Math.atan2(players[i].yVel, -xVel);
+    if (newRot > players[i].rotation + maxRotDelta)
+    {
+        players[i].rotation += maxRotDelta;
+    }
+    else if (newRot < players[i].rotation - maxRotDelta)
+    {
+        players[i].rotation -= maxRotDelta;
+    }
+    else
+    {
+        players[i].rotation = newRot;
+    }
+
+    // Move context
+    ctx.translate(xOffset, yOffset);
+    ctx.rotate(players[i].rotation);
+    
+    // draw player
+    ctx.drawImage(players[i].ImageDown, players[i].x - xOffset, players[i].y - yOffset);
+
+    // Return context
+    ctx.rotate(-players[i].rotation)
+    ctx.translate(-xOffset, -yOffset);
+
+    // Draw offset rectangles, maintains visibilty on overlapped birds
+    ctx.fillStyle = players[i].color;
+    ctx.fillRect(playersX + 50, players[i].y + pCenterY + (2 * i) - numPlayers, 100, 5);
+
+    //debug
+    //unrotated hitpoint
+    // ctx.fillStyle = "red";
+    // ctx.fillRect(playersX + pCenterX, players[i].y + pCenterY, 3, 3);
+}
+
+
+let stretchFactor = Math.PI / 1.8;
+let fullGap = northObstacle.height + gap;
+
+
+function updateObstacles()
+{
+    for( let i = 0; i < obstacles.length; i++)
+    {
+        /*
+        * Sunisoidal interpolation, starts on the steepest part, and ends just past the peak
+        * The obstacles appear to drop into place quickly, but spend enough time at the bottom for the player to react (not really but whatever)
+        * I think there's room for optimization, Math.sin is slow (probably)
+        */
+        let scale = obstacles[i].y - obstacles[i].finalY;
+        let sinWave = Math.sin(stretchFactor / (obstacles[i].frame - obstacles[i].frameInterval));
+
+        obstacles[i].y += (scale * sinWave);
+
+        ctx.drawImage(northObstacle, obstacles[i].x, obstacles[i].y);
+        ctx.drawImage(southObstacle, obstacles[i].x, obstacles[i].y + fullGap);
+
+        //debug
+        //Draws the collision lines
+        ctx.strokeStyle = 'magenta';
+        ctx.lineWidth = 3;
+        
+        ctx.beginPath();
+        ctx.moveTo(obstacles[i].x, 0);
+        ctx.lineTo(obstacles[i].x, obstacles[i].finalY + northObstacle.height);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'orange';
+        ctx.beginPath();
+        ctx.moveTo(obstacles[i].x, cvs.height);
+        ctx.lineTo(obstacles[i].x, obstacles[i].finalY + northObstacle.height + gap);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'green';
+        ctx.beginPath();
+        ctx.moveTo(obstacles[i].x, obstacles[i].finalY + northObstacle.height + gap);
+        ctx.lineTo(obstacles[i].x, obstacles[i].finalY + northObstacle.height);
+        ctx.stroke();
+        //end debug
+
+        obstacles[i].x += xVel;
+        obstacles[i].frame++;
+
+        // Reset obstacle when it leaves the screen plus some randomness that will get worse over time
+        if (obstacles[i].x <= -100 - obstacles[i].randomOffset)
+        {
+            obstacles[i].calcInterpolation(cvs.width, acc, xVel, frame, obstacleSpaceWidth)
+        }
+
+        // Check if obstacle is at player
+        if (obstacles[i].collisionFrame <= frame)
+        {
+            //the obstacle should reset before this frame
+            obstacles[i].collisionFrame = frame + frame;
+            
+            for (let j = 0; j < numPlayers; j++)
+            {
+                // Check if obstacle hit player
+                if (players[j].alive && ((players[j].y + pCenterY <= obstacles[i].finalY + northObstacle.height) || (players[j].y + pCenterY >= obstacles[i].finalY + northObstacle.height + gap)))
+                {
+                    players[j].alive = false;
+                    players[j].finalScore = (-Math.round(distance) / 100);
+                    setHighscore(colorList[j]);
+                }
+            }
+        }
+    }
+}
+
+
+function Update()
+{
+    scrollBackground();
+    updateObstacles();
+
+    xVel += acc;
+    distance += xVel;
+
+    plCtx.fillStyle = "#dbda96";
+    plCtx.fillRect(0, 0, plCvs.width, plCvs.height);
+
+    for (let i = 0; i < numPlayers; i++)
+    {
+        updatePlayers(i);
+    }
+
+    scrollForeground();
+    updateScore();
+    frame++;
+
+    if(paused)
+    {
+        ctx.fillStyle = "#000";
+        ctx.font = "50px monospace";
+        ctx.fillText("Press P to play!", 10, cvs.height / 2);
+        return;
+    }
+        
+    requestAnimationFrame(Update);
+}
+Update();
+
+</script>
